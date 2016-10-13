@@ -271,64 +271,7 @@ void MacGrid::solvePressure(double t, double fluidDensity, double atmP)
 
 void MacGrid::applyPressure(double t, double fluidDensity)
 {
-	GridCell *cell, *neighbor, *n;
-
-	//First set the pressures at each cell
-	for(int x = 0; x < this->_width_; ++x)
-	{
-		for(int y = 0; y < this->_height_; ++y)
-		{
-			cell = this->cellAt(x, y);
-			if(cell->type() == FLUID)
-				cell->setP((double)(*_p_)[cell->id()]);
-			else if(cell->type() == AIR)
-				cell->setP(0.0);
-
-		}
-	}
-
-	double d = t / (fluidDensity * this->_cellSize_);
-	double p, px, py;
-	p = 0.0;
-	px = 0.0;
-	py = 0.0;
-	double gradient[2];
-
-	//Calculate and subtract the gradient at each cell
-	for(int x = 0; x < this->_width_; ++x)
-	{
-		for(int y = 0; y < this->_height_; ++y)
-		{
-			cell = this->cellAt(x, y);
-			if(cell->type() != FLUID && cell->type() != AIR)
-				continue;
-
-			p = cell->p();
-
-			neighbor = this->cellAt(x - 1, y);
-			if(neighbor != NULL)
-				px = neighbor->p();
-			neighbor = this->cellAt(x, y - 1);
-			if(neighbor != NULL)
-				py = neighbor->p();
-
-			gradient[0] = p - px;
-			gradient[1] = p - py;
-
-			//apply the pressure to velocity components that border FLUID cells
-			//and that do not border SOLID cells
-			n = this->cellAt(x - 1, y);
-			if(n != NULL && n->type() != SOLID)
-				if(cell->type() == FLUID || n->type() == FLUID)
-					cell->u()[0] -= (d * gradient[0]);
-
-			n = this->cellAt(x, y - 1);
-			if(n != NULL && n->type() != SOLID)
-				if(cell->type() == FLUID || n->type() == FLUID)
-					cell->u()[1] -= (d * gradient[1]);
-		}
-	}
-
+	cout << "applyPressure: NOT IMPLEMENTED" << endl;
 }
 
 double MacGrid::getDivergence(int x, int y)
@@ -598,48 +541,5 @@ int MacGrid::relabelFluidCells(void)
 
 void MacGrid::buildPressureMatrix(double t, double fluidDensity, double atmP)
 {
-	int numFluidCells = this->relabelFluidCells();
-	this->_A_->resize(numFluidCells, numFluidCells);
-	this->_p_->resize(numFluidCells);
-	this->_b_->resize(numFluidCells);
-
-	double d = (fluidDensity * this->_cellSize_) / t;
-
-	GridCell *cell;
-	GridCell *neighbor;
-	GridCell* neighbors[4];
-	int nonSolidNeighbors;
-	double divergence;
-	for(int x = 0; x < this->_width_; ++x)
-	{
-		for(int y = 0; y < this->_height_; ++y)
-		{
-			cell = this->cellAt(x, y);
-			if(cell->type() != FLUID)
-				continue;
-
-			nonSolidNeighbors = 0;
-			this->getNeighbors(x, y, neighbors);
-
-			for(int i = 0; i < 4; ++i)
-			{
-				neighbor = neighbors[i];
-				if(neighbor == NULL)
-					continue;
-
-				if(neighbor->type() != SOLID)
-					++nonSolidNeighbors;
-
-				if(neighbor->type() == FLUID)
-					this->_A_->coeffRef(cell->id(), neighbor->id()) = 1;
-			}
-
-			this->_A_->coeffRef(cell->id(), cell->id()) = nonSolidNeighbors * -1;
-
-			divergence = d * this->getDivergence(x, y);
-
-			this->_b_->operator()(cell->id()) = divergence;
-		}
-	}
-
+	cout << "buildPressureMatrix: NOT IMPLEMENTED" << endl;
 }
