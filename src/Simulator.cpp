@@ -18,8 +18,8 @@ const double PARTICLES_PER_FRAME = 30;
 const int EMIT_FRAMES = 96;
 
 //paths where serialized data will be written out (CHANGE THESE TO THE DESIRED PATH)
-const string PARTICLES_PATH =  "<YOUR_PATH_HERE>/particles/p.%03d";
-const string GRIDS_PATH = "<YOUR_PATH_HERE>/grids/grid.%03d";
+const string PARTICLES_PATH =  "C:/Users/Dallin/fluidsimstarter/data/particles/p.%03d";
+const string GRIDS_PATH = "C:/Users/Dallin/fluidsimstarter/data/grids/grid.%03d";
 
 Simulator::Simulator(MacGrid *grid) : _grid_(grid), _fps_(24)
 {

@@ -541,5 +541,7 @@ int MacGrid::relabelFluidCells(void)
 
 void MacGrid::buildPressureMatrix(double t, double fluidDensity, double atmP)
 {
-	cout << "buildPressureMatrix: NOT IMPLEMENTED" << endl;
+	// cout << "buildPressureMatrix: NOT IMPLEMENTED" << endl;
+	this->_A_[0][0] = 0;
+
 }
