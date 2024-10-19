@@ -271,7 +271,66 @@ void MacGrid::solvePressure(double t, double fluidDensity, double atmP)
 
 void MacGrid::applyPressure(double t, double fluidDensity)
 {
-	cout << "applyPressure: NOT IMPLEMENTED" << endl;
+	cout << "applyPressure: IN PROGRESS" << endl;
+		
+	for (int x = 0; x < width(); ++x) {
+		for (int y = 0; y < height(); ++y) { // loop through all cells
+			GridCell* cell = this->cellAt(x, y);
+			Eigen::VectorXd p = *(this->_p_);
+			// x gradient
+			float x_grad = 0;
+			if (cellAt(x-1, y) != NULL) {
+				bool borders_fluid_cell = cellAt(x-1, y)->type()==FLUID || cellAt(x, y)->type()==FLUID;
+				bool borders_solid_cell = cellAt(x-1, y)->type()==SOLID || cellAt(x, y)->type()==SOLID;
+				if (borders_fluid_cell && !borders_solid_cell) {
+						float left_pressure;
+						float cell_pressure;
+						if (cellAt(x-1, y)->type()==FLUID) {
+							int left_id = cellAt(x-1, y)->id();
+							left_pressure = p[left_id];
+						} else if (cellAt(x-1, y)->type()==AIR) {
+							left_pressure = 1;
+						}
+						if (cell->type()==FLUID) {
+							int cell_id = cell->id();
+							cell_pressure = p[cell_id];
+						} else if (cell->type()==AIR) {
+							cell_pressure = 1;
+						}
+						x_grad = cell_pressure - left_pressure;
+				}			
+			}
+			// y gradient
+			float y_grad = 0;
+			if (cellAt(x, y-1) != NULL) {
+				bool borders_fluid_cell = cellAt(x, y-1)->type()==FLUID || cellAt(x, y)->type()==FLUID;
+				bool borders_solid_cell = cellAt(x, y-1)->type()==SOLID || cellAt(x, y)->type()==SOLID;
+
+				if (borders_fluid_cell && !borders_solid_cell) {
+						float below_pressure;
+						float cell_pressure;
+						if (cellAt(x, y-1)->type()==FLUID) {
+							int below_id = cellAt(x, y-1)->id();
+							below_pressure = p[below_id];
+
+						} else if (cellAt(x, y-1)->type()==AIR) {
+							below_pressure = 1;
+						}
+						if (cell->type()==FLUID) {
+							int cell_id = cell->id();
+							cell_pressure = p[cell_id];
+						} else if (cell->type()==AIR) {
+							cell_pressure = 1;
+						}
+						y_grad = cell_pressure - below_pressure;
+				}
+			}
+
+			Eigen::Vector2d pressure_gradient(x_grad, y_grad);
+			Eigen::Vector2d diff = t/(fluidDensity*this->cellSize())*pressure_gradient;
+			cell->setU(cell->u()-diff);
+		}
+	}
 }
 
 double MacGrid::getDivergence(int x, int y)
@@ -541,7 +600,58 @@ int MacGrid::relabelFluidCells(void)
 
 void MacGrid::buildPressureMatrix(double t, double fluidDensity, double atmP)
 {
-	// cout << "buildPressureMatrix: NOT IMPLEMENTED" << endl;
-	this->_A_[0][0] = 0;
+	cout << "buildPressureMatrix: IN PROGRESS" << endl;
+	int fluid_cell_count = this->relabelFluidCells();
+	this->_b_->resize(fluid_cell_count);
+	this->_A_->resize(fluid_cell_count, fluid_cell_count);
+	this->_p_->resize(fluid_cell_count);
+	float divergence;
+	float air_cell_count;
+	float non_solid_count;
+	int cell_id;
 
+	float h = this->_cellSize_;
+	float density = fluidDensity;
+
+	GridCell* neighbors[4];
+	for (int x = 0; x < width(); ++x) {
+		for (int y = 0; y < height(); ++y) {
+			GridCell* cell = this->cellAt(x, y);
+
+			if (cell->type() == FLUID) {
+				cell_id = cell->id();
+				air_cell_count = 0;
+				non_solid_count = 0;
+				this->getNeighbors(x, y, neighbors);
+
+				for (int i = 0; i < 4; ++i) {
+					if (neighbors[i] != NULL) {
+						CellType type = neighbors[i]->type();
+						if (type == AIR) {
+							++air_cell_count;
+							++non_solid_count;
+						}
+						if (type == FLUID) {
+							++non_solid_count;
+						}
+					}
+				}
+
+				divergence = this->getDivergence(x, y);
+				double b = density*h/t*divergence-air_cell_count*atmP;
+				(*this->_b_)(cell_id) = b;
+				this->_A_->insert(cell_id, cell_id) = -non_solid_count;
+				
+				for (GridCell* n : neighbors) {
+					if (n != NULL) {
+						CellType type = n->type();
+						if (type == FLUID) {
+							int index = n->id();
+							this->_A_->insert(index, cell_id) = 1;
+						}
+					}
+				}
+			}
+		}
+	}
 }
