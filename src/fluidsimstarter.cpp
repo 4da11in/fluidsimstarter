@@ -15,7 +15,7 @@ using namespace std;
 #include "MacGrid.h"
 #include "GridCell.h"
 
-const int NUM_FRAMES = 200;
+const int NUM_FRAMES = 100;
 
 int main()
 {

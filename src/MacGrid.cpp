@@ -144,6 +144,79 @@ void MacGrid::updateBuffer(vector<Particle*> particles, int kcfl)
 	}
 }
 
+double h(double r) {
+	if (r >= 0 && r <= 1) {
+		return 1-r;
+	} else if (r <= 0 && r >= -1) {
+		return 1+r;
+	} else {
+		return 0;
+	}
+}
+
+void MacGrid::applyParticleVelocities(vector<Particle *> particles)
+{
+	// in progress
+	// need to apply velocities from particles to grid.
+	// for each particle, 
+
+	// for (int pnum = 0; pnum < particles.size(); ++pnum) {
+	// 	// add this particle to the "particle neighbor" list of every grid cell that may be affected by this particle's velocity
+	// 	Particle* p = particles[pnum];
+	// 	double x = p->pos()[0];
+	// 	double y = p->pos()[1];
+	// 	int gridx = x/this->cellSize();
+	// 	int gridy = y/this->cellSize();
+	// 	// which cells might this particle affect?
+	// 	// anything within 1 grid cell on the x (keeping in mind we may be at either extreme, and are rounding left and down)
+	// 	this->cellAt(gridx, gridy)->addParticle(p);
+	// 	if (gridx+1 < width())
+	// 		this->cellAt(gridx+1, gridy)->addParticle(p);
+	// 	if (gridx > 0)
+	// 		this->cellAt(gridx-1, gridy)->addParticle(p);
+	// 	// checking on the y
+	// 	if (gridy+1 < height())
+	// 		this->cellAt(gridx, gridy+1)->addParticle(p);
+	// 	if (gridy > 0)
+	// 		this->cellAt(gridx, gridy-1)->addParticle(p);
+	// }
+
+	for (int x = 0; x < width(); ++x) {
+		for (int y = 0; y < height(); ++y) {
+			GridCell* gc = this->cellAt(x,y);
+			double W = 0;
+			Eigen::Vector2d vel(0,0);
+			for (int i = 0; i < particles.size(); i++) { // gc->getParticles()
+			// should be computing per component
+				Particle* p = particles[i];
+				// calculate weight using distance (distance reduces weight, something like 1-d)
+				Eigen::Vector2d& particle_pos = p->pos();
+				Eigen::Vector2d grid_pos(cellSize()*x, cellSize()*y);
+				// check if close enough in the x
+				// need to shift assuming that grid positions are in center, not lower left
+				// double x_component_y_pos = grid_pos[1]+0.5*double(cellSize());
+				// bool x_close_enough = abs(particle_pos[0]-grid_pos[0]) < cellSize() && abs(particle_pos[1]-x_component_y_pos) < cellSize();
+				// double y_component_x_pos = grid_pos[0]+0.5*double(cellSize());
+				// double y_close_enough = abs(particle_pos[1]-grid_pos[1]) < cellSize() && abs(particle_pos[0]-y_component_x_pos) < cellSize();
+				double w = 0;
+				// if (x_close_enough && y_close_enough) {
+				w = h((particle_pos[0]-grid_pos[0])/cellSize())*h((particle_pos[1]-grid_pos[1])/cellSize());
+				// }
+				W += w;
+				vel += w*p->vel();
+			}
+			// std::cout << "W (total) is: " << W << '\n';
+			// std::cout << x << " " << y<< " " << " " << vel<< " " << '\n';
+			// use weights on velocities, sum all and divide by sum of weights. save this new velocity onto the grid.
+			if (W != 0) {
+				vel/=W;
+			}
+			gc->setOldU(vel);
+			gc->setU(vel); // this will be updated by other steps later, oldU will remain the same
+		}
+	}
+}
+
 void MacGrid::setLayer(int layer)
 {
 	//sets the layer of all the cells in the grid to layer
@@ -170,6 +243,20 @@ void MacGrid::getVelocity(double x, double y, Eigen::Vector2d &result)
 	result[1] = this->getInterpolatedValue(hdx, dy, 1);
 }
 
+void MacGrid::getVelocityDiff(double x, double y, Eigen::Vector2d &result)
+{
+	//x and y are in world space, not grid space
+
+	double dx = x / this->_cellSize_;
+	double dy = y / this->_cellSize_;
+
+	double hdx = dx - 0.5;
+	double hdy = dy - 0.5;
+
+	result[0] = this->getInterpolatedDiff(dx, hdy, 0);
+	result[1] = this->getInterpolatedDiff(hdx, dy, 1);
+}
+
 void MacGrid::advectVelocity(double t)
 {
 	//advects the velocity field using the backward particle trace
@@ -194,6 +281,7 @@ void MacGrid::advectVelocity(double t)
 			this->getVelocity(prevY[0], prevY[1], prevUY);
 
 			cell->updateTempU(prevUX[0], prevUY[1]);
+			// cell->setOldU(cell->u());
 		}
 	}
 
@@ -215,6 +303,28 @@ void MacGrid::traceParticle(double x, double y, double t, Eigen::Vector2d &resul
 
 	//store velocity at location half a timestep ago in v
 	this->getVelocity(x + ht * v[0], y + ht * v[1], v);
+
+
+	//advect by the velocity half a timestep ago
+	result[0] = x + t * v[0];
+	result[1] = y + t * v[1];
+}
+
+void MacGrid::traceParticleDiff(double x, double y, double t, Eigen::Vector2d &result)
+{
+
+	//x and y are in world space, not grid space
+
+	Eigen::Vector2d v;
+
+	//store velocity at current location in v
+	this->getVelocityDiff(x, y, v);
+
+	//double ht = this->_halfSize_ * t;
+	double ht = 0.5 * t;
+
+	//store velocity at location half a timestep ago in v
+	this->getVelocityDiff(x + ht * v[0], y + ht * v[1], v);
 
 
 	//advect by the velocity half a timestep ago
@@ -271,7 +381,7 @@ void MacGrid::solvePressure(double t, double fluidDensity, double atmP)
 
 void MacGrid::applyPressure(double t, double fluidDensity)
 {
-	cout << "applyPressure: IN PROGRESS" << endl;
+	cout << "applyPressure: DONE!!!" << endl;
 		
 	for (int x = 0; x < width(); ++x) {
 		for (int y = 0; y < height(); ++y) { // loop through all cells
@@ -555,6 +665,21 @@ double MacGrid::getInterpolatedValue(double x, double y, int index) const
 		   weights[3] * vels[3];
 }
 
+double MacGrid::getInterpolatedDiff(double x, double y, int index) const
+{
+	int i = floor(x);
+	int j = floor(y);
+
+	double weights[4], vels[4];
+	this->getInterpWeights(x, y, i, j, weights);
+	this->getCellDiffComponents(i, j, index, vels);
+	// std::cout << "diffs: " << vels[0] << '\n';
+	return weights[0] * vels[0] +
+		   weights[1] * vels[1] +
+		   weights[2] * vels[2] +
+		   weights[3] * vels[3];
+}
+
 void MacGrid::getInterpWeights(double x, double y, int i, int j, double* result) const
 {
     result[0] = (i + 1 - x) * (j + 1 - y);
@@ -573,12 +698,30 @@ double MacGrid::getCellU(int i, int j, int index) const
 		return cell->u()[index];
 }
 
+double MacGrid::getCellUOld(int i, int j, int index) const
+{
+	GridCell *cell = this->cellAt(i, j);
+
+	if(cell == NULL)
+		return NON_EXISTENT_VEL;
+	else
+		return cell->oldU()[index];
+}
+
 void MacGrid::getCellUComponents(int i, int j, int index, double* result) const
 {
 	result[0] = this->getCellU(i, j, index);
 	result[1] = this->getCellU(i + 1, j, index);
 	result[2] = this->getCellU(i, j + 1, index);
 	result[3] = this->getCellU(i + 1, j + 1, index);
+}
+
+void MacGrid::getCellDiffComponents(int i, int j, int index, double* result) const
+{
+	result[0] = this->getCellU(i, j, index) - this->getCellUOld(i, j, index);
+	result[1] = this->getCellU(i + 1, j, index) - this->getCellUOld(i + 1, j, index);
+	result[2] = this->getCellU(i, j + 1, index) - this->getCellUOld(i, j + 1, index);
+	result[3] = this->getCellU(i + 1, j + 1, index) - this->getCellUOld(i + 1, j + 1, index);
 }
 
 int MacGrid::relabelFluidCells(void)
@@ -600,7 +743,7 @@ int MacGrid::relabelFluidCells(void)
 
 void MacGrid::buildPressureMatrix(double t, double fluidDensity, double atmP)
 {
-	cout << "buildPressureMatrix: IN PROGRESS" << endl;
+	cout << "buildPressureMatrix: DONE!!!" << endl;
 	int fluid_cell_count = this->relabelFluidCells();
 	this->_b_->resize(fluid_cell_count);
 	this->_A_->resize(fluid_cell_count, fluid_cell_count);

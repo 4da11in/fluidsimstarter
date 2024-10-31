@@ -26,10 +26,13 @@ public:
 	virtual double getMinCellSize(void);
 	virtual int cellTypeCount(CellType type);
 	virtual void updateBuffer(vector<Particle*> particles, int kcfl);
+	virtual void applyParticleVelocities(vector<Particle*> particles);
 	virtual void setLayer(int layer);
 	virtual void getVelocity(double x, double y, Eigen::Vector2d &result);
+	virtual void getVelocityDiff(double x, double y, Eigen::Vector2d &result);
 	virtual void advectVelocity(double t);
 	virtual void traceParticle(double x, double y, double t, Eigen::Vector2d &result);
+	virtual void traceParticleDiff(double x, double y, double t, Eigen::Vector2d &result);
 	virtual void swapTempVelocity(void);
 	virtual void applyExternalForces(double t, double gravity);
 	virtual void solvePressure(double t, double fluidDensity, double atmP);
@@ -68,9 +71,12 @@ private:
 	Eigen::VectorXd* _b_;
 
 	virtual double getInterpolatedValue(double x, double y, int index) const;
+	virtual double getInterpolatedDiff(double x, double y, int index) const;
 	virtual void getInterpWeights(double x, double y, int i, int j, double* result) const;
 	virtual double getCellU(int i, int j, int index) const;
+	virtual double getCellUOld(int i, int j, int index) const;
 	virtual void getCellUComponents(int i, int j, int index, double* result) const;
+	virtual void getCellDiffComponents(int i, int j, int index, double* result) const;
 	virtual int relabelFluidCells(void);
 	virtual void buildPressureMatrix(double t, double fluidDensity, double atmP);
 

@@ -56,16 +56,17 @@ void Simulator::run(int frames)
 			ts = this->_grid_->getMinCellSize() / maxU;
 			ts = min(frame - curTime, ts);
 			cout << "\t\ttimestep: " << ts << endl;
+			this->_grid_->applyParticleVelocities(this->_particles_);
 			this->advectParticles(ts);
-
 			this->_grid_->updateBuffer(this->_particles_, 1);
 			this->_grid_->advectVelocity(ts);
-			this->_grid_->applyExternalForces(ts, g);
+			this->_grid_->applyExternalForces(ts, g);			
 			this->_grid_->solvePressure(ts, FLUID_DENSITY, ATM_PRESSURE);
 			this->_grid_->applyPressure(ts, FLUID_DENSITY);
 			this->_grid_->extrapolateVelocity(1);
 			this->_grid_->setSolidVelocities();
-
+			// apply velocities to particles			
+			this->applyGridVelsToP();
 			curTime += ts;
 
 			cout << endl;
@@ -87,16 +88,61 @@ void Simulator::addParticles(int count)
 		this->addParticle(p);
 	}
 }
+Eigen::Vector2d Simulator::interp(double x1, double xp, double x2, Eigen::Vector2d u1, Eigen::Vector2d u2) {
+	int cell_size = double(this->_grid_->cellSize());
+	// std::cout << "cell size: " << cell_size;
+	double f1 = (xp-x1)/cell_size;
+	double f2 = (x2-xp)/cell_size;
+	// std::cout << "f values: " << f1 << ' ' << f2 << '\n';
+	// std::cout << "u values: " << u1 << ' ' << u2 << '\n';
+	// std::cout << "muliplied values: " << f2*u1 << ' ' << f1*u2 << '\n';
+
+	return f1*u2 + f2*u1;
+}
+
+void Simulator::applyGridVelsToP() {
+	for (Particle* p : this->_particles_) {
+		Eigen::Vector2d newVel;
+		this->_grid_->getVelocity(p->pos()[0], p->pos()[1], newVel);
+		p->updateVel(newVel[0], newVel[1]); // incorrect for flip, but what the heck
+	}
+}
 
 void Simulator::advectParticles(double t)
 {
 	Particle *p;
-	Eigen::Vector2d newPos, u;
+	Eigen::Vector2d velDiff, newPos, u;
 	for(int i = 0; i < this->_particles_.size(); ++i)
 	{
 		p = this->_particles_[i];
+		// this->_grid_->traceParticleDiff(p->pos()[0], p->pos()[1], t, velDiff);
+		// p->updateVel(velDiff[0], velDiff[1]);
+
 		this->_grid_->traceParticle(p->pos()[0], p->pos()[1], t, newPos);
 		p->updatePos(newPos[0], newPos[1]);
+		// find all grid cells in neighborhood
+		// MacGrid* mcgriddle = this->_grid_;
+		// int cell_size = mcgriddle->cellSize();
+		// double px = p->pos()[0]/cell_size;
+		// double py = p->pos()[1]/cell_size;
+		// // std::cout << px << ' ' << py << '\n';
+		// int gridx = int(px); // truncated
+		// int gridy = int(py); // truncated
+		// // std::cout << "u: " << gridx << " " << gridy << " " << mcgriddle->cellAt(gridx, gridy)->u() << '\n';
+
+		// Eigen::Vector2d diff_v1 = mcgriddle->cellAt(gridx, gridy)->u() - mcgriddle->cellAt(gridx, gridy)->oldU();
+		// Eigen::Vector2d diff_v2 = mcgriddle->cellAt(gridx+1, gridy)->u() - mcgriddle->cellAt(gridx+1, gridy)->oldU();
+		// Eigen::Vector2d diff_v3 = mcgriddle->cellAt(gridx, gridy+1)->u() - mcgriddle->cellAt(gridx, gridy+1)->oldU();
+		// Eigen::Vector2d diff_v4 = mcgriddle->cellAt(gridx+1, gridy+1)->u() - mcgriddle->cellAt(gridx+1, gridy+1)->oldU();
+
+		// Eigen::Vector2d diff_interp1 = this->interp(gridx, px, gridx+1, diff_v1, diff_v2);
+		// Eigen::Vector2d diff_interp2 = this->interp(gridx, px, gridx+1, diff_v3, diff_v4);
+		// Eigen::Vector2d interp_diff_vel = this->interp(gridy, py, gridy+1, diff_interp1, diff_interp2);
+		// // std::cout << "difference velocity: " << diff_v1 << '\n';
+		// p->updateVel(interp_diff_vel[0]+0.5, interp_diff_vel[1]);
+		// // std::cout << "pos: " << p->pos() << '\n';
+		// std::cout << "vel: " << p->vel() << '\n';
+		// p->updatePos(p->pos()[0]+p->vel()[0], p->pos()[1]+p->vel()[1]);
 	}
 }
 

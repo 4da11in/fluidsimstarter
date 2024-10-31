@@ -36,6 +36,9 @@ public:
 	void advectParticles(double t);
 	void serializeGrids(int frame, const string path);
 	void serializeParticles(int frame, const string path);
+	void applyGridVelsToP();
+	
+	Eigen::Vector2d interp(double x1, double xp, double x2, Eigen::Vector2d u1, Eigen::Vector2d u2);
 
 private:
 	MacGrid *_grid_;
