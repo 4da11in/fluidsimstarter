@@ -154,7 +154,7 @@ double h(double r) {
 	}
 }
 
-void MacGrid::applyParticleVelocities(vector<Particle *> particles)
+void MacGrid::applyPVelsToGrid(vector<Particle *> particles)
 {
 	// in progress
 	// need to apply velocities from particles to grid.

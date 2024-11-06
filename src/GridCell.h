@@ -25,6 +25,7 @@ public:
 	int const& layer() const {return _layer_;};
 	Eigen::Vector2d& u() {return _u_;};
 	Eigen::Vector2d& oldU() {return _oldU_;};
+	Eigen::Vector2d& diff() {return _diff_;};
 	Eigen::Vector2d& tempU() {return _tempU_;};
 	double const& p() {return _p_;};
 
@@ -37,6 +38,7 @@ public:
 	void setLayer(int layer) {_layer_ = layer;};
 	void setU(Eigen::Vector2d u) {_u_[0] = u[0]; _u_[1] = u[1];};
 	void setOldU(Eigen::Vector2d u) {_oldU_[0] = u[0]; _oldU_[1] = u[1];};
+	void setDiff(Eigen::Vector2d u) {_diff_[0] = u[0]; _diff_[1] = u[1];};
 	void updateU(double x, double y) {_u_[0] = x; _u_[1] = y;};
 	void setTempU(Eigen::Vector2d tempU) {_tempU_[0] = tempU[0]; _tempU_[1] = tempU[1];};
 	void updateTempU(double x, double y) {_tempU_[0] = x; _tempU_[1] = y;};
@@ -56,6 +58,7 @@ private:
 	//velocity is stored at the center of the minimum cell edges
 	Eigen::Vector2d _u_;
 	Eigen::Vector2d _oldU_;
+	Eigen::Vector2d _diff_;
 
 	Eigen::Vector2d _tempU_;
 

@@ -56,8 +56,8 @@ void Simulator::run(int frames)
 			ts = this->_grid_->getMinCellSize() / maxU;
 			ts = min(frame - curTime, ts);
 			cout << "\t\ttimestep: " << ts << endl;
-			this->_grid_->applyParticleVelocities(this->_particles_);
 			this->advectParticles(ts);
+			this->_grid_->applyPVelsToGrid(this->_particles_);
 			this->_grid_->updateBuffer(this->_particles_, 1);
 			this->_grid_->advectVelocity(ts);
 			this->_grid_->applyExternalForces(ts, g);			
@@ -65,7 +65,6 @@ void Simulator::run(int frames)
 			this->_grid_->applyPressure(ts, FLUID_DENSITY);
 			this->_grid_->extrapolateVelocity(1);
 			this->_grid_->setSolidVelocities();
-			// apply velocities to particles			
 			this->applyGridVelsToP();
 			curTime += ts;
 
@@ -88,12 +87,19 @@ void Simulator::addParticles(int count)
 		this->addParticle(p);
 	}
 }
+int gtc;
 Eigen::Vector2d Simulator::interp(double x1, double xp, double x2, Eigen::Vector2d u1, Eigen::Vector2d u2) {
 	int cell_size = double(this->_grid_->cellSize());
 	// std::cout << "cell size: " << cell_size;
 	double f1 = (xp-x1)/cell_size;
 	double f2 = (x2-xp)/cell_size;
 	// std::cout << "f values: " << f1 << ' ' << f2 << '\n';
+	// std::cout << "f sum: " << f1 + f2 << '\n';
+	if (f1 > f2) {
+		gtc++;
+	} else if (f2 > f1) {
+		gtc--;
+	}
 	// std::cout << "u values: " << u1 << ' ' << u2 << '\n';
 	// std::cout << "muliplied values: " << f2*u1 << ' ' << f1*u2 << '\n';
 
@@ -101,10 +107,55 @@ Eigen::Vector2d Simulator::interp(double x1, double xp, double x2, Eigen::Vector
 }
 
 void Simulator::applyGridVelsToP() {
+	// Eigen::Vector2d dud0(-0.01, 0.0);
+	// Eigen::Vector2d dud1(0.01, 0.0);
+	// std::cout << "dud: " << interp(10, 10.5, 11, dud0, dud1) << '\n';
+	// return;
+	for (int x = 0; x < this->_grid_->width(); ++x) {
+		for (int y = 0; y < this->_grid_->height(); ++y) { // loop through all cells
+			GridCell* cell = this->_grid_->cellAt(x,y);
+			Eigen::Vector2d diff = cell->u() - this->_grid_->cellAt(x,y)->oldU();
+			cell->setDiff(diff);
+		}
+	}
 	for (Particle* p : this->_particles_) {
-		Eigen::Vector2d newVel;
-		this->_grid_->getVelocity(p->pos()[0], p->pos()[1], newVel);
-		p->updateVel(newVel[0], newVel[1]); // incorrect for flip, but what the heck
+		Eigen::Vector2d pos = p->pos();
+		int grid_cellx = pos[0]/this->_grid_->cellSize();
+		int grid_celly = pos[1]/this->_grid_->cellSize();
+		Eigen::Vector2d interpolated_diff;
+		
+		Eigen::Vector2d diff_1(0, 0);
+		Eigen::Vector2d diff_2(0, 0);
+		if (grid_cellx+1 < this->_grid_->width()) {
+			GridCell* cell_1 = this->_grid_->cellAt(grid_cellx, grid_celly);
+			GridCell* cell_2 = this->_grid_->cellAt(grid_cellx+1, grid_celly);
+			diff_1 = cell_1->diff();
+			diff_2 = cell_2->diff();
+		}
+		Eigen::Vector2d interpolated_diff_x_1_2 = interp(int(pos[0]), pos[0], int(pos[0])+1, diff_1, diff_2);
+		
+		Eigen::Vector2d diff_3(0, 0);
+		Eigen::Vector2d diff_4(0, 0);
+		if (grid_celly+1 < this->_grid_->height() && grid_cellx+1 < this->_grid_->width()) {
+			GridCell* cell_3 = this->_grid_->cellAt(grid_cellx, grid_celly+1);
+			GridCell* cell_4 = this->_grid_->cellAt(grid_cellx+1, grid_celly+1);
+			diff_3 = cell_3->diff();
+			diff_4 = cell_4->diff();
+		}
+		Eigen::Vector2d interpolated_diff_x_3_4 = interp(int(pos[0]), pos[0], int(pos[0])+1, diff_3, diff_4);
+		
+		// if (grid_cellx+1 < this->_grid_->width() && grid_celly+1 < this->_grid_->height()) {
+		interpolated_diff = interp(int(pos[1]), pos[1], int(pos[1])+1, interpolated_diff_x_1_2, interpolated_diff_x_3_4);
+		// }
+		Eigen::Vector2d newVel = p->vel() + interpolated_diff;
+		// zero velocity components if they are going into wall
+		if (grid_cellx+1 > this->_grid_->width()) {
+			newVel[0] = 0;	
+		}
+		if (grid_celly+1 > this->_grid_->height()) {
+			newVel[1] = 0;
+		}
+		p->updateVel(newVel[0], newVel[1]); // correct for flip now haha
 	}
 }
 

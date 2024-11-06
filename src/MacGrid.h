@@ -26,7 +26,7 @@ public:
 	virtual double getMinCellSize(void);
 	virtual int cellTypeCount(CellType type);
 	virtual void updateBuffer(vector<Particle*> particles, int kcfl);
-	virtual void applyParticleVelocities(vector<Particle*> particles);
+	virtual void applyPVelsToGrid(vector<Particle*> particles);
 	virtual void setLayer(int layer);
 	virtual void getVelocity(double x, double y, Eigen::Vector2d &result);
 	virtual void getVelocityDiff(double x, double y, Eigen::Vector2d &result);
