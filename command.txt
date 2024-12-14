@@ -1,1 +1,1 @@
-g++ -I "C:\Program Files" -I "C:\Users\Dallin\fluidsimstarter\src" *.cpp && ./a.exe
+g++ -I "C:\Program Files" -I "C:\Users\Dallin\fluidsimstarter\src" ./src/*.cpp && ./a.exe

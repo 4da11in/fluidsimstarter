@@ -36,7 +36,11 @@ public:
 	void advectParticles(double t);
 	void serializeGrids(int frame, const string path);
 	void serializeParticles(int frame, const string path);
-	void applyGridVelsToP();
+	void initParticleVolumes();
+	void pToGrid();
+	void gridToP();
+	double N(double x);
+	double getWeight(double i, double j, double x, double y);
 	
 	Eigen::Vector2d interp(double x1, double xp, double x2, Eigen::Vector2d u1, Eigen::Vector2d u2);
 

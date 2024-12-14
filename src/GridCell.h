@@ -28,6 +28,7 @@ public:
 	Eigen::Vector2d& diff() {return _diff_;};
 	Eigen::Vector2d& tempU() {return _tempU_;};
 	double const& p() {return _p_;};
+	double mass() {return _mass_;};
 
 	std::vector<Particle*> getParticles() {return _particleNeighbors_;};
 
@@ -43,6 +44,8 @@ public:
 	void setTempU(Eigen::Vector2d tempU) {_tempU_[0] = tempU[0]; _tempU_[1] = tempU[1];};
 	void updateTempU(double x, double y) {_tempU_[0] = x; _tempU_[1] = y;};
 	void setP(const double p) {_p_ = p;};
+	void setMass(const double m) {_mass_ = m;};
+
 	void swapTempVelocity(void) {_u_[0] = _tempU_[0]; _u_[1] = _tempU_[1];};
 
 	void addParticle(Particle* p){_particleNeighbors_.push_back(p);};
@@ -64,6 +67,7 @@ private:
 
 	//pressure is stored at the cell center
 	double _p_;
+	double _mass_;
 
 	std::vector<Particle*> _particleNeighbors_;
 

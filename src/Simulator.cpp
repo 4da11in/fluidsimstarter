@@ -56,16 +56,19 @@ void Simulator::run(int frames)
 			ts = this->_grid_->getMinCellSize() / maxU;
 			ts = min(frame - curTime, ts);
 			cout << "\t\ttimestep: " << ts << endl;
-			this->advectParticles(ts);
-			this->_grid_->applyPVelsToGrid(this->_particles_);
+			// this->advectParticles(ts);
+			this->pToGrid();
+			if (curTime == 0) {
+				this->initParticleVolumes();
+			}
 			this->_grid_->updateBuffer(this->_particles_, 1);
 			this->_grid_->advectVelocity(ts);
-			this->_grid_->applyExternalForces(ts, g);			
+			this->_grid_->applyExternalForces(ts, g);
 			this->_grid_->solvePressure(ts, FLUID_DENSITY, ATM_PRESSURE);
 			this->_grid_->applyPressure(ts, FLUID_DENSITY);
 			this->_grid_->extrapolateVelocity(1);
 			this->_grid_->setSolidVelocities();
-			this->applyGridVelsToP();
+			this->gridToP();
 			curTime += ts;
 
 			cout << endl;
@@ -87,30 +90,52 @@ void Simulator::addParticles(int count)
 		this->addParticle(p);
 	}
 }
-int gtc;
+double h(double r) {
+	if (r >= 0 && r <= 1) {
+		return 1-r;
+	} else if (r <= 0 && r >= -1) {
+		return 1+r;
+	} else {
+		return 0;
+	}
+}
+void Simulator::pToGrid()
+{
+	// in progress
+	// MPM: apply mass and velocity to grid using proper interpolation
+	
+	for (int x = 0; x < this->_grid_->width(); ++x) {
+		for (int y = 0; y < this->_grid_->height(); ++y) {
+			GridCell* gc = this->_grid_->cellAt(x,y);
+			Eigen::Vector2d vel(0,0);
+			double cell_mass = 0;
+			for (int i = 0; i < this->_particles_.size(); i++) {
+				Particle* p = this->_particles_[i];
+				// calculate weight using distance
+				Eigen::Vector2d& particle_pos = p->pos();
+				Eigen::Vector2d grid_pos(this->_grid_->cellSize()*x, this->_grid_->cellSize()*y);
+				double weight = this->getWeight(x, y, particle_pos[0], particle_pos[1]);
+				cell_mass += weight*p->mass();
+				if (cell_mass != 0) {
+					vel += p->vel()*p->mass()*weight/cell_mass;
+				}
+			}
+			gc->setMass(cell_mass);
+			gc->setOldU(vel);
+			gc->setU(vel); // this will be updated by other steps later, oldU will remain the same
+		}
+	}
+}
+
 Eigen::Vector2d Simulator::interp(double x1, double xp, double x2, Eigen::Vector2d u1, Eigen::Vector2d u2) {
 	int cell_size = double(this->_grid_->cellSize());
-	// std::cout << "cell size: " << cell_size;
 	double f1 = (xp-x1)/cell_size;
 	double f2 = (x2-xp)/cell_size;
-	// std::cout << "f values: " << f1 << ' ' << f2 << '\n';
-	// std::cout << "f sum: " << f1 + f2 << '\n';
-	if (f1 > f2) {
-		gtc++;
-	} else if (f2 > f1) {
-		gtc--;
-	}
-	// std::cout << "u values: " << u1 << ' ' << u2 << '\n';
-	// std::cout << "muliplied values: " << f2*u1 << ' ' << f1*u2 << '\n';
 
 	return f1*u2 + f2*u1;
 }
 
-void Simulator::applyGridVelsToP() {
-	// Eigen::Vector2d dud0(-0.01, 0.0);
-	// Eigen::Vector2d dud1(0.01, 0.0);
-	// std::cout << "dud: " << interp(10, 10.5, 11, dud0, dud1) << '\n';
-	// return;
+void Simulator::gridToP() {
 	for (int x = 0; x < this->_grid_->width(); ++x) {
 		for (int y = 0; y < this->_grid_->height(); ++y) { // loop through all cells
 			GridCell* cell = this->_grid_->cellAt(x,y);
@@ -119,35 +144,19 @@ void Simulator::applyGridVelsToP() {
 		}
 	}
 	for (Particle* p : this->_particles_) {
-		Eigen::Vector2d pos = p->pos();
-		int grid_cellx = pos[0]/this->_grid_->cellSize();
-		int grid_celly = pos[1]/this->_grid_->cellSize();
-		Eigen::Vector2d interpolated_diff;
+		Eigen::Vector2d particle_pos = p->pos();
+		int grid_cellx = particle_pos[0]/this->_grid_->cellSize();
+		int grid_celly = particle_pos[1]/this->_grid_->cellSize();
+
+		Eigen::Vector2d newVel = p->vel();
 		
-		Eigen::Vector2d diff_1(0, 0);
-		Eigen::Vector2d diff_2(0, 0);
-		if (grid_cellx+1 < this->_grid_->width()) {
-			GridCell* cell_1 = this->_grid_->cellAt(grid_cellx, grid_celly);
-			GridCell* cell_2 = this->_grid_->cellAt(grid_cellx+1, grid_celly);
-			diff_1 = cell_1->diff();
-			diff_2 = cell_2->diff();
+		for (int x = 0; x < this->_grid_->width(); ++x) {
+			for (int y = 0; y < this->_grid_->height(); ++y) {
+				double weight = this->getWeight(x, y, particle_pos[0], particle_pos[1]);
+				Eigen::Vector2d diff = this->_grid_->cellAt(x,y)->diff();
+				newVel += diff * weight;
+			}
 		}
-		Eigen::Vector2d interpolated_diff_x_1_2 = interp(int(pos[0]), pos[0], int(pos[0])+1, diff_1, diff_2);
-		
-		Eigen::Vector2d diff_3(0, 0);
-		Eigen::Vector2d diff_4(0, 0);
-		if (grid_celly+1 < this->_grid_->height() && grid_cellx+1 < this->_grid_->width()) {
-			GridCell* cell_3 = this->_grid_->cellAt(grid_cellx, grid_celly+1);
-			GridCell* cell_4 = this->_grid_->cellAt(grid_cellx+1, grid_celly+1);
-			diff_3 = cell_3->diff();
-			diff_4 = cell_4->diff();
-		}
-		Eigen::Vector2d interpolated_diff_x_3_4 = interp(int(pos[0]), pos[0], int(pos[0])+1, diff_3, diff_4);
-		
-		// if (grid_cellx+1 < this->_grid_->width() && grid_celly+1 < this->_grid_->height()) {
-		interpolated_diff = interp(int(pos[1]), pos[1], int(pos[1])+1, interpolated_diff_x_1_2, interpolated_diff_x_3_4);
-		// }
-		Eigen::Vector2d newVel = p->vel() + interpolated_diff;
 		// zero velocity components if they are going into wall
 		if (grid_cellx+1 > this->_grid_->width()) {
 			newVel[0] = 0;	
@@ -155,8 +164,25 @@ void Simulator::applyGridVelsToP() {
 		if (grid_celly+1 > this->_grid_->height()) {
 			newVel[1] = 0;
 		}
-		p->updateVel(newVel[0], newVel[1]); // correct for flip now haha
+		p->updateVel(newVel[0], newVel[1]);
 	}
+}
+
+double Simulator::N(double x)
+{
+	x = abs(x);
+	if (x >= 0 && x < 1) {
+		return 0.5*pow(x,3) - pow(x,2) + 2.0/3.0;
+	}
+	if (x >= 1 && x < 2) {
+		return -1.0/6.0 * pow(x,3) + pow(x,2) - 2*x + 4.0/3.0;
+	}
+    return 0.0;
+}
+
+double Simulator::getWeight(double i, double j, double x, double y)
+{
+    return N(x-i)*N(y-j);
 }
 
 void Simulator::advectParticles(double t)
@@ -166,34 +192,9 @@ void Simulator::advectParticles(double t)
 	for(int i = 0; i < this->_particles_.size(); ++i)
 	{
 		p = this->_particles_[i];
-		// this->_grid_->traceParticleDiff(p->pos()[0], p->pos()[1], t, velDiff);
-		// p->updateVel(velDiff[0], velDiff[1]);
 
 		this->_grid_->traceParticle(p->pos()[0], p->pos()[1], t, newPos);
 		p->updatePos(newPos[0], newPos[1]);
-		// find all grid cells in neighborhood
-		// MacGrid* mcgriddle = this->_grid_;
-		// int cell_size = mcgriddle->cellSize();
-		// double px = p->pos()[0]/cell_size;
-		// double py = p->pos()[1]/cell_size;
-		// // std::cout << px << ' ' << py << '\n';
-		// int gridx = int(px); // truncated
-		// int gridy = int(py); // truncated
-		// // std::cout << "u: " << gridx << " " << gridy << " " << mcgriddle->cellAt(gridx, gridy)->u() << '\n';
-
-		// Eigen::Vector2d diff_v1 = mcgriddle->cellAt(gridx, gridy)->u() - mcgriddle->cellAt(gridx, gridy)->oldU();
-		// Eigen::Vector2d diff_v2 = mcgriddle->cellAt(gridx+1, gridy)->u() - mcgriddle->cellAt(gridx+1, gridy)->oldU();
-		// Eigen::Vector2d diff_v3 = mcgriddle->cellAt(gridx, gridy+1)->u() - mcgriddle->cellAt(gridx, gridy+1)->oldU();
-		// Eigen::Vector2d diff_v4 = mcgriddle->cellAt(gridx+1, gridy+1)->u() - mcgriddle->cellAt(gridx+1, gridy+1)->oldU();
-
-		// Eigen::Vector2d diff_interp1 = this->interp(gridx, px, gridx+1, diff_v1, diff_v2);
-		// Eigen::Vector2d diff_interp2 = this->interp(gridx, px, gridx+1, diff_v3, diff_v4);
-		// Eigen::Vector2d interp_diff_vel = this->interp(gridy, py, gridy+1, diff_interp1, diff_interp2);
-		// // std::cout << "difference velocity: " << diff_v1 << '\n';
-		// p->updateVel(interp_diff_vel[0]+0.5, interp_diff_vel[1]);
-		// // std::cout << "pos: " << p->pos() << '\n';
-		// std::cout << "vel: " << p->vel() << '\n';
-		// p->updatePos(p->pos()[0]+p->vel()[0], p->pos()[1]+p->vel()[1]);
 	}
 }
 
@@ -219,5 +220,22 @@ void Simulator::serializeParticles(int frame, const string path)
 		pos = this->_particles_[i]->pos();
 		this->_grid_->getVelocity(pos[0], pos[1], u);
 		f << pos[0] << " " << pos[1] << " " << u[0] << " " << u[1] << endl;
+	}
+}
+
+void Simulator::initParticleVolumes()
+{
+	for (int i = 0; i < this->_particles_.size(); i++) {
+		Eigen::Vector2d p_pos = this->_particles_[i]->pos();
+		double density = 0;
+		for (int x = 0; x < this->_grid_->width(); ++x) {
+			for (int y = 0; y < this->_grid_->height(); ++y) {
+				double mass = this->_grid_->cellAt(x,y)->mass();
+				double weight = this->getWeight(x, y, p_pos[0], p_pos[1]);
+				density += mass * weight / pow(this->_grid_->cellSize(), 3);
+			}
+		}
+		this->_particles_[i]->updateDens(density);
+		this->_particles_[i]->updateVol(this->_particles_[i]->mass() / density);
 	}
 }
