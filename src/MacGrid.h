@@ -33,12 +33,16 @@ public:
 	virtual void traceParticle(double x, double y, double t, Eigen::Vector2d &result);
 	virtual void traceParticleDiff(double x, double y, double t, Eigen::Vector2d &result);
 	virtual void swapTempVelocity(void);
-	virtual void applyExternalForces(double t, double gravity);
-	virtual void solvePressure(double t, double fluidDensity, double atmP);
+    double N(double x);
+    Eigen::Vector2d compute_f(int i, int j, vector<Particle *> particles);
+    virtual void applyExternalForces(double t, double gravity, vector<Particle *> particles);
+    virtual void solvePressure(double t, double fluidDensity, double atmP);
 	virtual void applyPressure(double t, double fluidDensity);
 	virtual double getDivergence(int x, int y);
 	virtual void extrapolateVelocity(int kcfl);
 	virtual void setSolidVelocities(void);
+    double dN(double x);
+    Eigen::Vector2d getDelWeight(double i, double j, double x, double y);
 
 	GridCell* cellAt(int i, int j) const;
 	GridCell* cellAtWorldPos(double x, double y) const;

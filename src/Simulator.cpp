@@ -14,8 +14,8 @@ const double FLUID_DENSITY = 1.0;
 const double ATM_PRESSURE = 1.0;
 
 //constants controlling how particles are added to the simulation
-const double PARTICLES_PER_FRAME = 30;
-const int EMIT_FRAMES = 96;
+const double PARTICLES_PER_FRAME = 30;//30;
+const int EMIT_FRAMES = 1;//96;
 
 //paths where serialized data will be written out (CHANGE THESE TO THE DESIRED PATH)
 const string PARTICLES_PATH =  "C:/Users/Dallin/fluidsimstarter/data/particles/p.%03d";
@@ -37,12 +37,13 @@ void Simulator::run(int frames)
 	double maxU, ts;
 	double curTime = 0.0;
 	double g = GRAVITY / this->_fps_;
+	bool have_computed_volumes = false;
 
 	for(int frame = 0; frame <= frames; ++frame)
 	{
 		cout << "Current frame: " << frame << "-----------------------------------------" << endl;
 		if(frame < EMIT_FRAMES)
-			this->addParticles(PARTICLES_PER_FRAME);
+			this->addParticles(PARTICLES_PER_FRAME, frame);
 
 		this->serializeGrids(frame, GRIDS_PATH);
 		this->serializeParticles(frame, PARTICLES_PATH);
@@ -55,20 +56,33 @@ void Simulator::run(int frames)
 			cout << "\t\tmaxU: " << maxU << endl;
 			ts = this->_grid_->getMinCellSize() / maxU;
 			ts = min(frame - curTime, ts);
+			// ts *= 0.5;
 			cout << "\t\ttimestep: " << ts << endl;
-			// this->advectParticles(ts);
+			
 			this->pToGrid();
-			if (curTime == 0) {
+			Particle* p0 = this->_particles_[0];
+			GridCell* mygc = this->_grid_->cellAt(7,22);
+			// std::cout << "gvel after pToGrid: \n" << mygc->u() << '\n';
+			// std::cout << "pvel after pToGrid: \n" << p0->vel() << '\n';
+			if (!have_computed_volumes) {
 				this->initParticleVolumes();
+				have_computed_volumes = true;
 			}
 			this->_grid_->updateBuffer(this->_particles_, 1);
-			this->_grid_->advectVelocity(ts);
-			this->_grid_->applyExternalForces(ts, g);
-			this->_grid_->solvePressure(ts, FLUID_DENSITY, ATM_PRESSURE);
-			this->_grid_->applyPressure(ts, FLUID_DENSITY);
-			this->_grid_->extrapolateVelocity(1);
+			// this->_grid_->advectVelocity(ts);
+			// std::cout << "gvel before external forces: \n" << mygc->u() << '\n';
+			// std::cout << "pvel before external forces: \n" << p0->vel() << '\n';
+			this->_grid_->applyExternalForces(ts, g, this->_particles_); // compute grid forces and update grid vels
+			// std::cout << "gvel after external forces: \n" << mygc->u() << '\n';
+			// std::cout << "pvel after external forces: \n" << p0->vel() << '\n';
+			// this->_grid_->solvePressure(ts, FLUID_DENSITY, ATM_PRESSURE);
+			// this->_grid_->applyPressure(ts, FLUID_DENSITY);
+			// this->_grid_->extrapolateVelocity(1);
 			this->_grid_->setSolidVelocities();
+			this->updateDeformationGradient(ts);
 			this->gridToP();
+			// std::cout << "pvel after gridToP: \n" << p0->vel() << '\n';
+			this->advectParticles(ts);
 			curTime += ts;
 
 			cout << endl;
@@ -76,7 +90,7 @@ void Simulator::run(int frames)
 	}
 }
 
-void Simulator::addParticles(int count)
+void Simulator::addParticles(int count, int frame)
 {
 	double randX, randY;
 	Particle *p;
@@ -88,8 +102,65 @@ void Simulator::addParticles(int count)
 				       ((double)rand() / RAND_MAX) * 1.5);
 		p = new Particle(randX, randY);
 		this->addParticle(p);
+		p->setParticleId(i + count*frame);
 	}
 }
+
+void Simulator::updateDeformationGradient(double t) {
+	Eigen::Matrix2d I(2,2);
+	I.setIdentity();
+	for (int i = 0; i < this->_particles_.size(); i++) {
+		Particle* p = this->_particles_[i];
+		// if (i == 0)
+			// std::cout << "\nparticle velocity before update def grad: \n" << p->vel() << '\n';
+		Eigen::Matrix2d del_v = getDelV(p);
+		Eigen::Matrix2d Fe = p->defGradE();
+		Eigen::Matrix2d Fp = p->defGradP();
+		Eigen::Matrix2d F_old = Fe*Fp;
+		// std::cout << "det F: " << F_old.determinant() << ' ';
+		
+		// Eigen::Matrix2d dud_final{{1,0}, {0,10}};
+		
+		Eigen::Matrix2d F_final = (I + t*del_v)*F_old;//+ t*del_v
+		// if (F_old(0,0) = 1 && F_old(1,1) == 1 && F_old(0,1) == 0 && F_old(1,0) == 0)
+			// F_final = (I - t*del_v)*F_old;
+			// F_final.transposeInPlace();
+		// F_final(0,0) = 1; F_final(0,1) = 0; F_final(1,0) = 0; F_final(1,1) = 1.1;
+		// F_final = dud_final;
+		Eigen::Matrix2d Fe_temp = F_final*Fp.inverse();
+
+		// compute svd
+		Eigen::Matrix2d U, V, E;
+		Eigen::JacobiSVD<Eigen::Matrix2d> svd(Fe_temp, Eigen::ComputeFullU | Eigen::ComputeFullV);
+
+		U = svd.matrixU();
+		Eigen::Vector2d singular_values = svd.singularValues();
+		// clamp singular values
+		double theta_c = 2.5e-2;
+		double theta_s = 7.5e-3;
+		for (double& d : singular_values) {
+			d = std::clamp(d, 1-theta_c, 1+theta_s);
+		}
+		E = singular_values.asDiagonal();
+		V = svd.matrixV();
+
+		// Eigen::Matrix2d dud{{1,0}, {0,1}};
+		// dud.setIdentity();
+		Eigen::Matrix2d Fe_final = U*E*V.transpose();
+		// Fe_final = dud;
+		// Fe_final.setIdentity();
+		p->updateDefGradE(Fe_final);
+		
+		// Eigen::Matrix2d dud2{{1.1,0}, {0,1}};
+		Eigen::Matrix2d Fp_final = Fe_final.inverse()*F_final;
+		// Fp_final.setIdentity();
+		p->updateDefGradP(Fp_final);
+		if (p->getParticleId() == 0)
+			// std::cout << "\n(t*del_v)\n" << (t*del_v) << '\n';
+			std::cout << "F: \n" << F_final << '\n';
+	}
+}
+
 double h(double r) {
 	if (r >= 0 && r <= 1) {
 		return 1-r;
@@ -115,12 +186,20 @@ void Simulator::pToGrid()
 				Eigen::Vector2d& particle_pos = p->pos();
 				Eigen::Vector2d grid_pos(this->_grid_->cellSize()*x, this->_grid_->cellSize()*y);
 				double weight = this->getWeight(x, y, particle_pos[0], particle_pos[1]);
-				cell_mass += weight*p->mass();
+				cell_mass += weight*p->mass();				
+			}
+			gc->setMass(cell_mass);
+			for (int i = 0; i < this->_particles_.size(); i++) {
 				if (cell_mass != 0) {
+					Particle* p = this->_particles_[i];
+					Eigen::Vector2d& particle_pos = p->pos();
+					double weight = this->getWeight(x, y, particle_pos[0], particle_pos[1]);
 					vel += p->vel()*p->mass()*weight/cell_mass;
 				}
 			}
-			gc->setMass(cell_mass);
+			// if (x == 7 && y == 22)
+				// std::cout << "\nGrid vel after ptoGrid: \n" << vel;
+			
 			gc->setOldU(vel);
 			gc->setU(vel); // this will be updated by other steps later, oldU will remain the same
 		}
@@ -139,11 +218,12 @@ void Simulator::gridToP() {
 	for (int x = 0; x < this->_grid_->width(); ++x) {
 		for (int y = 0; y < this->_grid_->height(); ++y) { // loop through all cells
 			GridCell* cell = this->_grid_->cellAt(x,y);
-			Eigen::Vector2d diff = cell->u() - this->_grid_->cellAt(x,y)->oldU();
+			Eigen::Vector2d diff = cell->u() - cell->oldU();
 			cell->setDiff(diff);
 		}
 	}
 	for (Particle* p : this->_particles_) {
+		// std::cout << p->deformation_gradient() << '\n';
 		Eigen::Vector2d particle_pos = p->pos();
 		int grid_cellx = particle_pos[0]/this->_grid_->cellSize();
 		int grid_celly = particle_pos[1]/this->_grid_->cellSize();
@@ -152,39 +232,63 @@ void Simulator::gridToP() {
 		
 		for (int x = 0; x < this->_grid_->width(); ++x) {
 			for (int y = 0; y < this->_grid_->height(); ++y) {
-				double weight = this->getWeight(x, y, particle_pos[0], particle_pos[1]);
+				double weight = this->getWeight(x, y, particle_pos[0], particle_pos[1]);				
+				
 				Eigen::Vector2d diff = this->_grid_->cellAt(x,y)->diff();
 				newVel += diff * weight;
+
+				// if (abs(weight) > 0.001 && p->getParticleId() == 0)
+				// 	std::cout << "px, py: " << particle_pos[0] << ", " << particle_pos[1] << '\n';
+					// std::cout << "x, y: " << x << ", " << y << '\n';
+					// std::cout << "weight: " << weight << '\n';
+					// std::cout << "diff: " << diff[0] << ", " << diff[1] << '\n';
+				
 			}
 		}
 		// zero velocity components if they are going into wall
-		if (grid_cellx+1 > this->_grid_->width()) {
+		if (grid_cellx+1 > this->_grid_->width() || grid_cellx-1 < 0) {
 			newVel[0] = 0;	
 		}
-		if (grid_celly+1 > this->_grid_->height()) {
+		if (grid_celly+1 > this->_grid_->height() || grid_celly-1 < 0) {
 			newVel[1] = 0;
 		}
+		// double max_vel = 1;
+		// if (newVel.norm() > max_vel)
+		// 	newVel = newVel/newVel.norm() * max_vel;
+		// if (p->getParticleId() == 0)
+			// std::cout << "\nparticle vel after gridToP: \n" << newVel;
 		p->updateVel(newVel[0], newVel[1]);
 	}
 }
 
-double Simulator::N(double x)
-{
-	x = abs(x);
-	if (x >= 0 && x < 1) {
-		return 0.5*pow(x,3) - pow(x,2) + 2.0/3.0;
-	}
-	if (x >= 1 && x < 2) {
-		return -1.0/6.0 * pow(x,3) + pow(x,2) - 2*x + 4.0/3.0;
-	}
-    return 0.0;
-}
-
 double Simulator::getWeight(double i, double j, double x, double y)
 {
-    return N(x-i)*N(y-j);
+    return this->_grid_->N(x-i)*this->_grid_->N(y-j);
 }
 
+Eigen::Matrix2d Simulator::getDelV(Particle* p)
+{
+	double x = p->pos()[0];
+	double y = p->pos()[1];
+	Eigen::Matrix2d delv{{0,0},{0,0}};
+	for (int i = 0; i < this->_grid_->width(); ++i) {
+		for (int j = 0; j < this->_grid_->height(); ++j) {
+			Eigen::Vector2d u = this->_grid_->cellAt(i, j)->u();
+			Eigen::Vector2d dw = this->_grid_->getDelWeight(i, j, x, y);
+			// if (p->getParticleId() == 0 && u.norm() > 0 && dw.norm() > 0)//i == 7 && j == 22 && 
+				// std::cout << "cell: " << i << ' ' << j << ": " << "u: " << u.transpose() << " dw: " << dw.transpose() << '\n' << "\nu*dw^t \n" << u*dw.transpose() << '\n';
+			// dw[1] = 0;
+			// dw[0] = 0;
+			delv += u*dw.transpose();
+			// if (i == 7 && j == 22 && u.norm() > 0 && dw.norm() > 0)
+				// std::cout << "particle " << p->getParticleId() << ": " << "\ndw:\n" << dw << "\n dw^t: \n" << dw.transpose() << '\n';
+		}
+	}
+
+	if (p->getParticleId() == 0)
+		std::cout << "\ndelv: \n" << delv;
+	return delv;
+}
 void Simulator::advectParticles(double t)
 {
 	Particle *p;
@@ -193,7 +297,8 @@ void Simulator::advectParticles(double t)
 	{
 		p = this->_particles_[i];
 
-		this->_grid_->traceParticle(p->pos()[0], p->pos()[1], t, newPos);
+		// this->_grid_->traceParticle(p->pos()[0], p->pos()[1], t, newPos);
+		newPos = p->pos() + t*p->vel();
 		p->updatePos(newPos[0], newPos[1]);
 	}
 }
@@ -218,7 +323,8 @@ void Simulator::serializeParticles(int frame, const string path)
 	for(int i = 0; i < this->_particles_.size(); ++i)
 	{
 		pos = this->_particles_[i]->pos();
-		this->_grid_->getVelocity(pos[0], pos[1], u);
+		// this->_grid_->getVelocity(pos[0], pos[1], u);
+		u = this->_particles_[i]->vel();
 		f << pos[0] << " " << pos[1] << " " << u[0] << " " << u[1] << endl;
 	}
 }
@@ -235,7 +341,7 @@ void Simulator::initParticleVolumes()
 				density += mass * weight / pow(this->_grid_->cellSize(), 3);
 			}
 		}
-		this->_particles_[i]->updateDens(density);
+		// this->_particles_[i]->updateDens(density);
 		this->_particles_[i]->updateVol(this->_particles_[i]->mass() / density);
 	}
 }

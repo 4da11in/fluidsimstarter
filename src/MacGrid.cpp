@@ -270,7 +270,131 @@ void MacGrid::swapTempVelocity(void)
 	}
 }
 
-void MacGrid::applyExternalForces(double t, double gravity)
+double MacGrid::N(double x)
+{
+	double ax = abs(x);
+
+	// linear
+	// if (ax >= 0 && ax < 1) {
+	// 	return 1-abs(x);
+	// }
+	// return 0;
+
+	// cubic
+	if (ax >= 0 && ax < 1) {
+		return 0.5*pow(ax,3) - pow(x,2) + 2.0/3.0;
+	}
+	if (ax >= 1 && ax < 2) {
+		return -1.0/6.0 * pow(ax,3) + pow(x,2) - 2*ax + 4.0/3.0;
+	}
+    return 0.0;
+}
+
+double MacGrid::dN(double x)
+{
+	double ax = abs(x);
+	double dax = x/abs(x);
+
+	// linear
+	// if (ax >= 0 && ax < 1) {
+	// 	return -dax;
+	// }
+	// return 0.0;
+
+	// cubic
+	if (ax >= 0 && ax < 1) {
+		return 1.5*pow(ax,2)*dax - 2*x;
+	}
+	if (ax >= 1 && ax < 2) {
+		return -0.5*pow(ax,2)*dax + 2*x - 2*dax;
+	}
+    return 0.0;
+}
+
+Eigen::Vector2d MacGrid::getDelWeight(double i, double j, double x, double y)
+{
+	Eigen::Vector2d dw(this->dN(x-i)*N(y-j), N(x-i)*dN(y-j));
+	return dw;
+}
+
+double E0 = 1000;
+double v = 0.2;
+double hardening_coefficient = 7;
+
+double mu(Eigen::Matrix2d Fp) {
+	double mu0 = E0 / (2*(1+v));
+	return 1000;
+	return mu0 * exp(hardening_coefficient*(1-Fp.determinant()));
+}
+double lambda(Eigen::Matrix2d Fp) {
+	double lambda0 = (E0 * v) / ((1+v)*(1-2*v));
+	return 1000;
+	return lambda0 * exp(hardening_coefficient*(1-Fp.determinant()));
+}
+Eigen::Matrix2d computeStress(Particle* p, bool print_stress) {
+	Eigen::Matrix2d Fp = p->defGradP();
+	Eigen::Matrix2d Fe = p->defGradE();
+	Eigen::Matrix2d F = Fe*Fp;
+
+	double J = F.determinant();
+	Eigen::Matrix2d R, S, U, V, E;
+	//
+
+	Eigen::JacobiSVD<Eigen::Matrix2d> svd(F, Eigen::ComputeFullU | Eigen::ComputeFullV);
+	U = svd.matrixU();
+	Eigen::Vector2d singular_values = svd.singularValues();
+
+	E = singular_values.asDiagonal();
+	V = svd.matrixV();
+	// if (print_stress)
+		// std::cout << "UEV: \n" << U*E*V.transpose() << '\n' << "F: \n" << F << '\n';
+		// std::cout << "\nU: \n" << U << "\n E: \n" << E << "\n V: \n" << V  << '\n';
+	R = U*V.transpose();
+	S = V*E*V.transpose();
+
+	Eigen::Matrix2d F_inverse = F.inverse();
+	
+	// Piola-Kirchoff stress
+	// fixed corrotated model:
+	Eigen::Matrix2d P = 2*mu(Fp) * (F - R) + lambda(Fp) * (J - 1) * J * F_inverse.transpose();
+	// Neo-Hookean:
+	// Eigen::Matrix2d P = mu(Fp) * (F - F_inverse.transpose()) + lambda(Fp) * log(J) * F_inverse.transpose();
+	// cauchy stress
+	Eigen::Matrix2d stress = 1/J * P * F.transpose();
+	// if (print_stress) {
+	// 	std::cout << "\n J: " << J << '\n';
+	// 	std::cout << "\n F: " << F << '\n';
+	// }
+		// std::cout << "F: \n" << F << "\nRS: \n" << R*S << "\n R: \n" << R << '\n';
+	Eigen::Matrix2d dud{{0,-1}, {-1,0}};
+	// dud.setIdentity();
+	return stress;
+}
+
+Eigen::Vector2d MacGrid::compute_f(int i, int j, vector<Particle*> particles) {
+	Eigen::Vector2d sum_f(0,0);
+	Eigen::Matrix2d stress{{0,0},{0,0}};
+	Eigen::Vector2d del_w(0,0);
+
+	for (Particle* p : particles) {
+		del_w = getDelWeight(i, j, p->pos()[0], p->pos()[1]);
+		bool print_stress = false;
+		if (i == 7 && j == 22 && p->getParticleId() == 0)
+			print_stress = true;
+		stress = computeStress(p, print_stress);
+		// if (i == 7 && j == 22 && p->getParticleId() == 0)
+			// std::cout << p->getParticleId() << "\n stress: \n" << stress << "\n";
+			// std::cout << "P vol: " << p->vol() << "\nstress:\n" << stress << "\nDel w: \n" << del_w << '\n';
+		sum_f += p->vol()*stress*del_w;
+	}
+	if (i == 7 && j == 22) {
+		// std::cout << "\n Force: \n" << -sum_f << '\n';
+	}
+	// Eigen::Vector2d dud(10, 0);
+	return -sum_f;
+}
+
+void MacGrid::applyExternalForces(double t, double gravity, vector<Particle *> particles)
 {
 	GridCell *cell, *n;
 	double vg = gravity * t;
@@ -278,20 +402,31 @@ void MacGrid::applyExternalForces(double t, double gravity)
 	for(int x = 0; x < this->_width_; ++x)
 	{
 		for(int y = 0; y < this->_height_; ++y)
-		{
+		{			
 			cell = this->cellAt(x, y);
-
 			//update the velocity if it borders a FLUID cell
-			if(cell->type() == FLUID)
-			{
+			// if(cell->type() == FLUID)
+			// {
 				cell->u()[1] += vg;
+			// }
+			// else
+			// {
+			// 	n = this->cellAt(x, y - 1);
+			// 	if(n != NULL and n->type() == FLUID)
+			// 		cell->u()[1] += vg;
+			// }
+			// TODO: change so that it doesn't cross through walls with this step
+			if (cell->mass() > 0) { // if the cell has no mass, has no particles nearby
+				// std::cout <<"\ncell: " << x << ", " << y << "\n mass: " << cell->mass() << '\n';
+				Eigen::Vector2d acc(0,0);
+					// std::cout << "f: " << f << "cell mass: " << cell->mass() << '\n';
+				Eigen::Vector2d f = compute_f(x, y, particles);
+				acc = f*t/cell->mass();
+				cell->setU(cell->u() + acc);
 			}
-			else
-			{
-				n = this->cellAt(x, y - 1);
-				if(n != NULL and n->type() == FLUID)
-					cell->u()[1] += vg;
-			}
+			// if (x == 7 && y == 22)
+				// std::cout << "\ngrid vel after apply external forces: \n" << cell->u() << '\n';
+			
 		}
 	}
 }

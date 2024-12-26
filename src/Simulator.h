@@ -30,19 +30,22 @@ public:
 
 	void addParticle(Particle *p) {_particles_.push_back(p);};
 	void setFps(const int fps) {_fps_ = fps;};
+	void updateDeformationGradient(double t);
 
 	void run(int frames);
-	void addParticles(int count);
+	void addParticles(int count, int frame);
 	void advectParticles(double t);
 	void serializeGrids(int frame, const string path);
 	void serializeParticles(int frame, const string path);
 	void initParticleVolumes();
 	void pToGrid();
 	void gridToP();
-	double N(double x);
-	double getWeight(double i, double j, double x, double y);
-	
-	Eigen::Vector2d interp(double x1, double xp, double x2, Eigen::Vector2d u1, Eigen::Vector2d u2);
+    double getWeight(double i, double j, double x, double y);
+
+
+    Eigen::Matrix2d getDelV(Particle* p);
+
+    Eigen::Vector2d interp(double x1, double xp, double x2, Eigen::Vector2d u1, Eigen::Vector2d u2);
 
 private:
 	MacGrid *_grid_;
