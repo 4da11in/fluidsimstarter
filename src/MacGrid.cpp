@@ -316,19 +316,19 @@ Eigen::Vector2d MacGrid::getDelWeight(double i, double j, double x, double y)
 	Eigen::Vector2d dw(this->dN(x-i)*N(y-j), N(x-i)*dN(y-j));
 	return dw;
 }
-
+// PARAMETERS
 double E0 = 1000;
 double v = 0.2;
-double hardening_coefficient = 7;
+double hardening_coefficient = 6;
 
 double mu(Eigen::Matrix2d Fp) {
 	double mu0 = E0 / (2*(1+v));
-	return 1000;
+	// return 1000;
 	return mu0 * exp(hardening_coefficient*(1-Fp.determinant()));
 }
 double lambda(Eigen::Matrix2d Fp) {
 	double lambda0 = (E0 * v) / ((1+v)*(1-2*v));
-	return 1000;
+	// return 1000;
 	return lambda0 * exp(hardening_coefficient*(1-Fp.determinant()));
 }
 Eigen::Matrix2d computeStress(Particle* p, bool print_stress) {
@@ -366,7 +366,7 @@ Eigen::Matrix2d computeStress(Particle* p, bool print_stress) {
 	// 	std::cout << "\n F: " << F << '\n';
 	// }
 		// std::cout << "F: \n" << F << "\nRS: \n" << R*S << "\n R: \n" << R << '\n';
-	Eigen::Matrix2d dud{{0,-1}, {-1,0}};
+	// Eigen::Matrix2d dud{{0,-1}, {-1,0}};
 	// dud.setIdentity();
 	return stress;
 }
@@ -423,6 +423,26 @@ void MacGrid::applyExternalForces(double t, double gravity, vector<Particle *> p
 				Eigen::Vector2d f = compute_f(x, y, particles);
 				acc = f*t/cell->mass();
 				cell->setU(cell->u() + acc);
+
+				// zero velocity components if they are going into wall
+				// double damping = 0;
+				// double friction = 0.1;
+				// if (x+1 >= this->width() && cell->u()[0] > 0) {
+				// 	cell->u()[0] *= -damping;
+				// 	cell->u()[1] *= friction;
+				// }
+				// if (x-1 < 0 && cell->u()[0] < 0) {
+				// 	cell->u()[0] *= -damping;
+				// 	cell->u()[1] *= friction;
+				// }
+				// if (y+1 >= this->height() && cell->u()[1] > 0) {
+				// 	cell->u()[1] *= -damping;
+				// 	cell->u()[0] *= friction;
+				// }
+				// if (y-1 < 0 && cell->u()[1] < 0) {
+				// 	cell->u()[1] *= -damping;
+				// 	cell->u()[0] *= friction;
+				// }
 			}
 			// if (x == 7 && y == 22)
 				// std::cout << "\ngrid vel after apply external forces: \n" << cell->u() << '\n';
