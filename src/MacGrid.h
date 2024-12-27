@@ -35,7 +35,7 @@ public:
 	virtual void swapTempVelocity(void);
     double N(double x);
     Eigen::Vector2d compute_f(int i, int j, vector<Particle *> particles);
-    virtual void applyExternalForces(double t, double gravity, vector<Particle *> particles);
+    virtual void applyExternalForces(double t, double gravity, vector<Particle *> particles, int frame, double damping, double friction);
     virtual void solvePressure(double t, double fluidDensity, double atmP);
 	virtual void applyPressure(double t, double fluidDensity);
 	virtual double getDivergence(int x, int y);

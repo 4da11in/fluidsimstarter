@@ -34,12 +34,13 @@ public:
 
 	void run(int frames);
 	void addParticles(int count, int frame);
-	void advectParticles(double t);
-	void serializeGrids(int frame, const string path);
+    double getMaxU();
+    void advectParticles(double t);
+    void serializeGrids(int frame, const string path);
 	void serializeParticles(int frame, const string path);
 	void initParticleVolumes();
 	void pToGrid();
-	void gridToP();
+	void gridToP(int frame);
     double getWeight(double i, double j, double x, double y);
 
 

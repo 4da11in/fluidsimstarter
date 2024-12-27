@@ -9,8 +9,8 @@
 
 Particle::Particle(const double x, const double y) : _pos_(x, y)
 {
-    this->updateVel(0,0); // initialize velocity to zero
-    this->updateMass(1000); // nonzero mass by default
+    this->updateVel(0,0); // initialize velocity
+    this->updateMass(20000); // nonzero mass by default
     this->updateVol(1);
 
     Eigen::Matrix2d I(2,2);

@@ -30,6 +30,8 @@ Simulator::~Simulator()
 {
 
 }
+double damping = 0;
+double friction = 0;
 
 void Simulator::run(int frames)
 {
@@ -38,6 +40,9 @@ void Simulator::run(int frames)
 	double curTime = 0.0;
 	double g = GRAVITY / this->_fps_;
 	bool have_computed_volumes = false;
+
+	bool printlots = false;
+	// printlots = true;
 
 	for(int frame = 0; frame <= frames; ++frame)
 	{
@@ -50,65 +55,69 @@ void Simulator::run(int frames)
 
 		while(curTime < frame)
 		{
-			cout << "\tcurrent time: " << curTime << endl;
+			if (printlots)
+				cout << "\tcurrent time: " << curTime << endl;
 
-			maxU = max(this->_grid_->getMaxU(), this->_grid_->getMinCellSize());
-			cout << "\t\tmaxU: " << maxU << endl;
+			maxU = max(this->getMaxU(), this->_grid_->getMinCellSize());
+			if (printlots)
+				cout << "\t\tmaxU: " << maxU << endl;
 			ts = this->_grid_->getMinCellSize() / maxU;
 			ts = min(frame - curTime, ts);
-			// ts *= 0.5;
-			cout << "\t\ttimestep: " << ts << endl;
+			
+			ts = min(ts, 0.25);
+			ts = max(ts, 0.01);
+			if (printlots)
+				cout << "\t\ttimestep: " << ts << endl;
 			
 			this->pToGrid();
 			Particle* p0 = this->_particles_[0];
 			GridCell* mygc = this->_grid_->cellAt(7,22);
-			// std::cout << "gvel after pToGrid: \n" << mygc->u() << '\n';
-			// std::cout << "pvel after pToGrid: \n" << p0->vel() << '\n';
 			if (!have_computed_volumes) {
 				this->initParticleVolumes();
 				have_computed_volumes = true;
 			}
-			this->_grid_->updateBuffer(this->_particles_, 1);
-			// this->_grid_->advectVelocity(ts);
-			// std::cout << "gvel before external forces: \n" << mygc->u() << '\n';
-			// std::cout << "pvel before external forces: \n" << p0->vel() << '\n';
-			this->_grid_->applyExternalForces(ts, g, this->_particles_); // compute grid forces and update grid vels
-			// std::cout << "gvel after external forces: \n" << mygc->u() << '\n';
-			// std::cout << "pvel after external forces: \n" << p0->vel() << '\n';
-			// this->_grid_->solvePressure(ts, FLUID_DENSITY, ATM_PRESSURE);
-			// this->_grid_->applyPressure(ts, FLUID_DENSITY);
-			// this->_grid_->extrapolateVelocity(1);
-			this->_grid_->setSolidVelocities();
+			// if (frame >= 30 && frame <= 60)
+				// std::cout << "F used for external forces: \n" << p0->defGradE()*p0->defGradP() << '\n';
+			this->_grid_->applyExternalForces(ts, g, this->_particles_, frame, damping, friction); // compute grid forces and update grid vels
 			this->updateDeformationGradient(ts);
-			this->gridToP();
-			// std::cout << "pvel after gridToP: \n" << p0->vel() << '\n';
+			this->gridToP(frame);
 			this->advectParticles(ts);
 			curTime += ts;
 
-			cout << endl;
+			if (printlots)
+				cout << endl;
 		}
 	}
 }
 
 void Simulator::addParticles(int count, int frame)
 {
-	double randX, randY;
+	double randX, randY, randA, randR;
 	Particle *p;
 	for(int i = 0; i < count; ++i)
 	{
-		randX = ((this->_grid_->width() / 1.7) * this->_grid_->cellSize() -
-					   ((double)rand() / RAND_MAX) * 2.5);
-		randY = ((this->_grid_->height() / 1.2) * this->_grid_->cellSize() +
-				       ((double)rand() / RAND_MAX) * 1.5);
 		// 5-8, 21-24
-		randX = 5 + ((double)rand() / RAND_MAX) * 2;
-		randY = 5 + ((double)rand() / RAND_MAX) * 1;
-		p = new Particle(randX, randY-0.5*randX);
+		// randX = 5 + ((double)rand() / RAND_MAX) * 2;
+		// randY = 21 + ((double)rand() / RAND_MAX) * 2;
+		randA = ((double)rand() / RAND_MAX) * 2*3.14159;
+		randR = ((double)rand() / RAND_MAX) * 1;
+		randX = 6.5 + randR*cos(randA);
+		randY = 22.5 + randR*sin(randA);
+
+		p = new Particle(randX, randY);
 		this->addParticle(p);
 		p->setParticleId(i + count*frame);
 	}
 }
-
+double Simulator::getMaxU() {
+	double maxu = 0;
+	for (Particle* p : this->_particles_) {
+		if (p->vel().norm() > maxu) {
+			maxu = p->vel().norm();
+		}
+	}
+	return maxu;
+}
 void Simulator::updateDeformationGradient(double t) {
 	Eigen::Matrix2d I(2,2);
 	I.setIdentity();
@@ -120,6 +129,7 @@ void Simulator::updateDeformationGradient(double t) {
 		Eigen::Matrix2d Fe = p->defGradE();
 		Eigen::Matrix2d Fp = p->defGradP();
 		Eigen::Matrix2d F_old = Fe*Fp;
+
 		// std::cout << "det F: " << F_old.determinant() << ' ';
 		
 		// Eigen::Matrix2d dud_final{{1,0}, {0,10}};
@@ -140,8 +150,8 @@ void Simulator::updateDeformationGradient(double t) {
 		Eigen::Vector2d singular_values = svd.singularValues();
 		// clamp singular values
 		// PARAMTERS
-		double theta_c = 2.5e-2;
-		double theta_s = 7.5e-3;
+		double theta_c = 1.9e-3;
+		double theta_s = 7.5e-4;
 		for (double& d : singular_values) {
 			d = std::clamp(d, 1-theta_c, 1+theta_s);
 		}
@@ -218,7 +228,7 @@ Eigen::Vector2d Simulator::interp(double x1, double xp, double x2, Eigen::Vector
 	return f1*u2 + f2*u1;
 }
 
-void Simulator::gridToP() {
+void Simulator::gridToP(int frame) {
 	for (int x = 0; x < this->_grid_->width(); ++x) {
 		for (int y = 0; y < this->_grid_->height(); ++y) { // loop through all cells
 			GridCell* cell = this->_grid_->cellAt(x,y);
@@ -249,32 +259,42 @@ void Simulator::gridToP() {
 				
 			}
 		}
-		// zero velocity components if they are going into wall
-		double damping = 0;
-		double friction = 0.1;
-		double ground = 0;
+		// process collisions particles
 
-		if (grid_cellx+1 > this->_grid_->width() && newVel[0] > 0) {
-			newVel[0] *= -damping;
-			newVel[1] *= friction;
-		}
-		if (grid_cellx-1 < ground && newVel[0] < 0) {
-			newVel[0] *= -damping;
-			newVel[1] *= friction;
-		}
-		if (grid_celly+1 > this->_grid_->height() && newVel[1] > 0) {
-			newVel[1] *= -damping;
-			newVel[0] *= friction;
-		}
-		if (grid_celly-1 < ground && newVel[1] < 0) {
-			newVel[1] *= -damping;
-			newVel[0] *= friction;
-		}
+		// if (p->pos()[0]+1 > this->_grid_->width()) {// && newVel[0] > 0
+		// 	newVel[0] *= -damping;
+		// 	newVel[1] *= friction;
+		// }
+		// if (p->pos()[0]-1 < 0 && newVel[0] < 0) {
+		// 	newVel[0] *= -damping;
+		// 	newVel[1] *= friction;
+		// }
+		// if (p->pos()[1]+1 > this->_grid_->height()) {// && newVel[1] > 0
+		// 	newVel[1] *= -damping;
+		// 	newVel[0] *= friction;
+		// }
+		// if (p->pos()[1]-1 < 0) {// && newVel[1] < 0
+		// 	newVel[1] *= -damping;
+		// 	newVel[0] *= friction;
+		// }
+		// if (frame >= 5 && p->getParticleId() == 85) {
+		// 	newVel *= 0;
+		// 	Eigen::Matrix2d I;
+		// 	I.setIdentity();
+		// 	p->updateDefGradE(I);
+		// 	p->updateDefGradP(I);
+		// }
 		// double max_vel = 1;
 		// if (newVel.norm() > max_vel)
 		// 	newVel = newVel/newVel.norm() * max_vel;
 		// if (p->getParticleId() == 0)
 			// std::cout << "\nparticle vel after gridToP: \n" << newVel;
+		double maxvel = 10;
+		if (newVel.norm() > maxvel)
+		{
+			newVel.normalize();
+			newVel *= maxvel;
+		}
 		p->updateVel(newVel[0], newVel[1]);
 	}
 }
@@ -325,7 +345,7 @@ void Simulator::serializeGrids(int frame, const string path)
 {
 	char spath[300];
 	sprintf(spath, path.c_str(), frame);
-	cout << "\twriting grid to " << spath << endl;
+	// cout << "\twriting grid to " << spath << endl;
 	this->_grid_->serialize(spath);
 }
 
@@ -333,7 +353,7 @@ void Simulator::serializeParticles(int frame, const string path)
 {
 	char spath[300];
 	sprintf(spath, path.c_str(), frame);
-	cout << "\twriting particles to " << spath << endl;
+	// cout << "\twriting particles to " << spath << endl;
 	ofstream f;
 	f.open(spath);
 

@@ -317,18 +317,18 @@ Eigen::Vector2d MacGrid::getDelWeight(double i, double j, double x, double y)
 	return dw;
 }
 // PARAMETERS
-double E0 = 1000;
+double E0 = 1.4e5;
 double v = 0.2;
-double hardening_coefficient = 6;
+double hardening_coefficient = 10;
 
 double mu(Eigen::Matrix2d Fp) {
 	double mu0 = E0 / (2*(1+v));
-	// return 1000;
+	// return 15e5;
 	return mu0 * exp(hardening_coefficient*(1-Fp.determinant()));
 }
 double lambda(Eigen::Matrix2d Fp) {
 	double lambda0 = (E0 * v) / ((1+v)*(1-2*v));
-	// return 1000;
+	// return 0;
 	return lambda0 * exp(hardening_coefficient*(1-Fp.determinant()));
 }
 Eigen::Matrix2d computeStress(Particle* p, bool print_stress) {
@@ -347,7 +347,7 @@ Eigen::Matrix2d computeStress(Particle* p, bool print_stress) {
 	E = singular_values.asDiagonal();
 	V = svd.matrixV();
 	// if (print_stress)
-		// std::cout << "UEV: \n" << U*E*V.transpose() << '\n' << "F: \n" << F << '\n';
+		// std::cout << "F: \n" << F << '\n';
 		// std::cout << "\nU: \n" << U << "\n E: \n" << E << "\n V: \n" << V  << '\n';
 	R = U*V.transpose();
 	S = V*E*V.transpose();
@@ -357,15 +357,12 @@ Eigen::Matrix2d computeStress(Particle* p, bool print_stress) {
 	// Piola-Kirchoff stress
 	// fixed corrotated model:
 	Eigen::Matrix2d P = 2*mu(Fp) * (F - R) + lambda(Fp) * (J - 1) * J * F_inverse.transpose();
+	// if (print_stress)
+		// std::cout << "mu: " << mu(Fp) << "lambda: " << lambda(Fp) << '\n';
 	// Neo-Hookean:
 	// Eigen::Matrix2d P = mu(Fp) * (F - F_inverse.transpose()) + lambda(Fp) * log(J) * F_inverse.transpose();
 	// cauchy stress
 	Eigen::Matrix2d stress = 1/J * P * F.transpose();
-	// if (print_stress) {
-	// 	std::cout << "\n J: " << J << '\n';
-	// 	std::cout << "\n F: " << F << '\n';
-	// }
-		// std::cout << "F: \n" << F << "\nRS: \n" << R*S << "\n R: \n" << R << '\n';
 	// Eigen::Matrix2d dud{{0,-1}, {-1,0}};
 	// dud.setIdentity();
 	return stress;
@@ -394,7 +391,7 @@ Eigen::Vector2d MacGrid::compute_f(int i, int j, vector<Particle*> particles) {
 	return -sum_f;
 }
 
-void MacGrid::applyExternalForces(double t, double gravity, vector<Particle *> particles)
+void MacGrid::applyExternalForces(double t, double gravity, vector<Particle *> particles, int frame, double damping, double friction)
 {
 	GridCell *cell, *n;
 	double vg = gravity * t;
@@ -404,48 +401,33 @@ void MacGrid::applyExternalForces(double t, double gravity, vector<Particle *> p
 		for(int y = 0; y < this->_height_; ++y)
 		{			
 			cell = this->cellAt(x, y);
-			//update the velocity if it borders a FLUID cell
-			// if(cell->type() == FLUID)
-			// {
-				cell->u()[1] += vg;
-			// }
-			// else
-			// {
-			// 	n = this->cellAt(x, y - 1);
-			// 	if(n != NULL and n->type() == FLUID)
-			// 		cell->u()[1] += vg;
-			// }
-			// TODO: change so that it doesn't cross through walls with this step
+			// if (x < 6)
+			cell->u()[0] += 0.1*vg;
+
 			if (cell->mass() > 0) { // if the cell has no mass, has no particles nearby
-				// std::cout <<"\ncell: " << x << ", " << y << "\n mass: " << cell->mass() << '\n';
 				Eigen::Vector2d acc(0,0);
-					// std::cout << "f: " << f << "cell mass: " << cell->mass() << '\n';
 				Eigen::Vector2d f = compute_f(x, y, particles);
 				acc = f*t/cell->mass();
 				cell->setU(cell->u() + acc);
 
-				// zero velocity components if they are going into wall
-				// double damping = 0;
-				// double friction = 0.1;
-				// if (x+1 >= this->width() && cell->u()[0] > 0) {
-				// 	cell->u()[0] *= -damping;
-				// 	cell->u()[1] *= friction;
-				// }
-				// if (x-1 < 0 && cell->u()[0] < 0) {
-				// 	cell->u()[0] *= -damping;
-				// 	cell->u()[1] *= friction;
-				// }
-				// if (y+1 >= this->height() && cell->u()[1] > 0) {
-				// 	cell->u()[1] *= -damping;
-				// 	cell->u()[0] *= friction;
-				// }
-				// if (y-1 < 0 && cell->u()[1] < 0) {
-				// 	cell->u()[1] *= -damping;
-				// 	cell->u()[0] *= friction;
-				// }
+				// process collisions grid
+				if (x+1 > this->width()) {// && cell->u()[0] > 0
+					cell->u()[0] *= -damping;
+					cell->u()[1] *= friction;
+				}
+				if (x-1 < 2) {// && cell->u()[0] < 0
+					cell->u()[0] *= -damping;
+					cell->u()[1] *= friction;
+				}
+				if (y+1 > this->height()) {// && cell->u()[1] > 0
+					cell->u()[1] *= -damping;
+					cell->u()[0] *= friction;
+				}
+				if (y-1 < 0) {// && cell->u()[1] < 0
+					cell->u()[1] *= -damping;
+					cell->u()[0] *= friction;
+				}
 			}
-			// if (x == 7 && y == 22)
-				// std::cout << "\ngrid vel after apply external forces: \n" << cell->u() << '\n';
 			
 		}
 	}
