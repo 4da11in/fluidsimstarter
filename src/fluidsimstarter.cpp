@@ -15,11 +15,11 @@ using namespace std;
 #include "MacGrid.h"
 #include "GridCell.h"
 
-const int NUM_FRAMES = 150;
+const int NUM_FRAMES = 300;
 
 int main()
 {
-	MacGrid *grid = new MacGrid(13, 26, 1);
+	MacGrid *grid = new MacGrid(40, 30, 1);
 	Simulator simulator(grid);
 	simulator.run(NUM_FRAMES);
 	return 0;

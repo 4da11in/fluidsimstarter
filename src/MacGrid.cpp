@@ -317,18 +317,17 @@ Eigen::Vector2d MacGrid::getDelWeight(double i, double j, double x, double y)
 	return dw;
 }
 // PARAMETERS
-double E0 = 1.4e5;
+// double E0 = 1.4e5; // Young's modulus
+double E0 = 10000;
 double v = 0.2;
 double hardening_coefficient = 10;
 
 double mu(Eigen::Matrix2d Fp) {
 	double mu0 = E0 / (2*(1+v));
-	// return 15e5;
 	return mu0 * exp(hardening_coefficient*(1-Fp.determinant()));
 }
 double lambda(Eigen::Matrix2d Fp) {
 	double lambda0 = (E0 * v) / ((1+v)*(1-2*v));
-	// return 0;
 	return lambda0 * exp(hardening_coefficient*(1-Fp.determinant()));
 }
 Eigen::Matrix2d computeStress(Particle* p, bool print_stress) {
@@ -346,23 +345,21 @@ Eigen::Matrix2d computeStress(Particle* p, bool print_stress) {
 
 	E = singular_values.asDiagonal();
 	V = svd.matrixV();
-	// if (print_stress)
-		// std::cout << "F: \n" << F << '\n';
-		// std::cout << "\nU: \n" << U << "\n E: \n" << E << "\n V: \n" << V  << '\n';
 	R = U*V.transpose();
 	S = V*E*V.transpose();
 
 	Eigen::Matrix2d F_inverse = F.inverse();
 	
 	// Piola-Kirchoff stress
+
 	// fixed corrotated model:
 	Eigen::Matrix2d P = 2*mu(Fp) * (F - R) + lambda(Fp) * (J - 1) * J * F_inverse.transpose();
-	// if (print_stress)
-		// std::cout << "mu: " << mu(Fp) << "lambda: " << lambda(Fp) << '\n';
 	// Neo-Hookean:
 	// Eigen::Matrix2d P = mu(Fp) * (F - F_inverse.transpose()) + lambda(Fp) * log(J) * F_inverse.transpose();
+	
 	// cauchy stress
 	Eigen::Matrix2d stress = 1/J * P * F.transpose();
+	
 	// Eigen::Matrix2d dud{{0,-1}, {-1,0}};
 	// dud.setIdentity();
 	return stress;
@@ -401,32 +398,44 @@ void MacGrid::applyExternalForces(double t, double gravity, vector<Particle *> p
 		for(int y = 0; y < this->_height_; ++y)
 		{			
 			cell = this->cellAt(x, y);
-			// if (x < 6)
-			cell->u()[0] += 0.1*vg;
-
-			if (cell->mass() > 0) { // if the cell has no mass, has no particles nearby
+			
+			if (frame == 5 && x == 0 && y == 0) {
+				// particles[85]->updateVel(0.1,0);
+			}
+			if (cell->mass() > 0) { // if the cell has no mass, has no particles nearby?
 				Eigen::Vector2d acc(0,0);
 				Eigen::Vector2d f = compute_f(x, y, particles);
 				acc = f*t/cell->mass();
 				cell->setU(cell->u() + acc);
+			} else {
+				Eigen::Vector2d zero(0,0);
+				cell->setU(zero);
+			}
 
-				// process collisions grid
-				if (x+1 > this->width()) {// && cell->u()[0] > 0
-					cell->u()[0] *= -damping;
-					cell->u()[1] *= friction;
-				}
-				if (x-1 < 2) {// && cell->u()[0] < 0
-					cell->u()[0] *= -damping;
-					cell->u()[1] *= friction;
-				}
-				if (y+1 > this->height()) {// && cell->u()[1] > 0
-					cell->u()[1] *= -damping;
-					cell->u()[0] *= friction;
-				}
-				if (y-1 < 0) {// && cell->u()[1] < 0
-					cell->u()[1] *= -damping;
-					cell->u()[0] *= friction;
-				}
+			// if (x > 6)
+				// cell->u()[0] += -0.1*vg;
+			// collision object
+			if (x > 30 && x < 37 && y > 14 && y < 17)
+				cell->u()[0] = 0;
+			// process collisions grid
+			int wall_right = this->width();
+			// wall_right = 10;
+			int wall_left = 1;
+			if (x+1 >= wall_right) {// && cell->u()[0] > 0
+				cell->u()[0] *= -damping;
+				cell->u()[1] *= friction;
+			}
+			if (x-1 < wall_left) {// && cell->u()[0] < 0
+				cell->u()[0] *= -damping;
+				cell->u()[1] *= friction;
+			}
+			if (y+1 >= this->height()) {// && cell->u()[1] > 0
+				cell->u()[1] *= -damping;
+				cell->u()[0] *= friction;
+			}
+			if (y-1 < 1) {// && cell->u()[1] < 0
+				cell->u()[1] *= -damping;
+				cell->u()[0] *= friction;
 			}
 			
 		}

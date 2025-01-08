@@ -9,7 +9,7 @@
 
 Particle::Particle(const double x, const double y) : _pos_(x, y)
 {
-    this->updateVel(0,0); // initialize velocity
+    this->updateVel(0.2,0); // initialize velocity
     this->updateMass(20000); // nonzero mass by default
     this->updateVol(1);
 
