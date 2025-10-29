@@ -1,6 +1,7 @@
-For this project I built upon some starter code made by Sean Flynn back when he was a student at Brigham Young University. I first implemented solving the pressure matrix, then extended the code to create a FLIP fluid simulation. This involved implementing interpolating velocities from particle to grid (and from grid to particle), and modifying the code so that it would add differences in velocity (instead of setting the velocity directly).
+# FLIP fluid simulation (Dallin Hunter)
+For this project I built upon some starter code made by Sean Flynn when he was a student at Brigham Young University. I first implemented solving the pressure matrix, then extended the code to create a FLIP fluid simulation. This involved interpolating velocities from particles to a background grid, interpolating velocities from the grid back onto particles, and modifying the code so that it would add differences in velocity instead of setting the velocity directly. This was a great chance to learn more about how fluid simulations work, and in particular what differentiates FLIP from other simulation methods.
 
-# fluidsimstarter
+# fluidsimstarter (original readme for starter code)
 
 Fluidsimstarter is a simple 2D marker-and-cell (MAC) fluid simulator intended for those wanting to jump into fluid simulation implementation. I have intentionally removed the sections of code that perform the pressure solve in order to give the programmer a chance to code them up themselves. This implementation is based on the fluid flow for the rest of us paper. It is not necessarily bug free or very efficient, so feel free to improve it as needed.
 
